@@ -1,0 +1,77 @@
+﻿using Fgc.Users.Application.Helpers;
+using Fgc.Users.Application.Interfaces;
+using Fgc.Users.Domain.Entities;
+using Fgc.Users.Domain.Exceptions;
+using Fgc.Users.Domain.ValueObjects;
+using MassTransit;
+using Microsoft.Extensions.Logging;
+using Fgc.MessageContracts.Events;
+
+namespace Fgc.Users.Application.Services
+{
+    public class UserService(IUserRepository userRepository, ILogger<UserService> logger, IPublishEndpoint publishEndpoint)
+    {
+        
+        public async Task<User> RegisterAsync(string name,string email,string password)
+        {
+            // Verificar se o email já está registrado. Procurando remover o Entity Framework que estava instalado por ocasião do monolito.
+            var emailExists = await userRepository.ExistsByEmailAsync(email);
+
+            if (emailExists)
+            {
+                throw new ConflictException("Email already registered.");
+            }
+
+            PasswordValidator.Validate(password);
+
+            var passwordHash = PasswordHasher.Hash(password);
+            var emailVo = Email.Create(email);
+
+            var user = User.Create(
+                name,
+                emailVo,
+                passwordHash
+            );
+            await userRepository.AddAsync(user);
+
+            await publishEndpoint.Publish(new UserCreatedEvent(
+                    user.Id, 
+                    user.Name, 
+                    user.Email.Value,
+                    DateTime.UtcNow
+                ));
+
+            logger.LogInformation(
+                "User registered successfully | UserId={UserId} | Email={Email}",
+                user.Id,
+                user.Email.Value
+            );
+
+            return user;
+        }
+
+        public async Task<User> UpdateUserAsync(
+            Guid userId,
+            string email,
+            string password)
+        {
+            var user = await userRepository.GetByIdAsync(userId);
+
+            if (user is null)
+            {
+               logger.LogWarning("Attempt to update non-existing user | UserId={UserId}", userId);
+
+                throw new NotFoundException("User not found.");
+            }
+
+            PasswordValidator.Validate(password);
+
+            user.UpdateEmail(Email.Create(email));
+            user.UpdatePassword(PasswordHasher.Hash(password));
+
+            await userRepository.UpdateAsync(user);
+
+            return user;
+        }
+    }
+}

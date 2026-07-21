@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fgc-users-api
+  labels:
+    app: fgc-users-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fgc-users-api
+  template:
+    metadata:
+      labels:
+        app: fgc-users-api
+    spec:
+      containers:
+        - name: fgc-users-api
+          image: fgc-users-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: fgc-users-api-config
+            - secretRef:
+                name: fgc-users-api-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20

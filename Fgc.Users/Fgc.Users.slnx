@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Fgc.Users.Api/Fgc.Users.Api.csproj" />
+    <Project Path="src/Fgc.Users.Application/Fgc.Users.Application.csproj" />
+    <Project Path="src/Fgc.Users.Domain/Fgc.Users.Domain.csproj" />
+    <Project Path="src/Fgc.Users.Infrastructure/Fgc.Users.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Fgc.Users.IntegrationTests/Fgc.Users.IntegrationTests.csproj" Id="858b3d29-5e7a-4e37-83a2-dbc55f11dce2" />
+    <Project Path="tests/Fgc.Users.Tests/Fgc.Users.Tests.csproj" />
+  </Folder>
+</Solution>

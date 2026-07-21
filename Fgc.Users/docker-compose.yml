@@ -1,0 +1,22 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672" # Porta que as APIs vão usar para mandar os eventos
+      - "15672:15672" # Porta do Painel Visual (Site do RabbitMQ)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - fgc_network
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  fgc_network:
+    driver: bridge
