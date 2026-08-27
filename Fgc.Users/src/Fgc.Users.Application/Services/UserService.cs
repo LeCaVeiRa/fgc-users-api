@@ -9,9 +9,9 @@ using Fgc.MessageContracts.Events;
 
 namespace Fgc.Users.Application.Services
 {
-    public class UserService(IUserRepository userRepository, ILogger<UserService> logger, IPublishEndpoint publishEndpoint)
+    public class UserService(IUserRepository userRepository, ILogger<UserService> logger, IPublishEndpoint publishEndpoint, IEventLogRepository eventLogRepository)
     {
-        
+
         public async Task<User> RegisterAsync(string name,string email,string password)
         {
             // Verificar se o email já está registrado. Procurando remover o Entity Framework que estava instalado por ocasião do monolito.
@@ -34,12 +34,16 @@ namespace Fgc.Users.Application.Services
             );
             await userRepository.AddAsync(user);
 
-            await publishEndpoint.Publish(new UserCreatedEvent(
-                    user.Id, 
-                    user.Name, 
+            var userCreatedEvent = new UserCreatedEvent(
+                    user.Id,
+                    user.Name,
                     user.Email.Value,
                     DateTime.UtcNow
-                ));
+                );
+
+            await publishEndpoint.Publish(userCreatedEvent);
+
+            await eventLogRepository.LogAsync("UserCreatedEvent", userCreatedEvent, CancellationToken.None);
 
             logger.LogInformation(
                 "User registered successfully | UserId={UserId} | Email={Email}",

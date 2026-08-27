@@ -1,3 +1,4 @@
+using Amazon.DynamoDBv2;
 using Fgc.Users.Application.Interfaces;
 using Fgc.Users.Application.Services;
 using Fgc.Users.Infrastructure.Persistence;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Prometheus;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +31,27 @@ builder.Services.AddDbContext<UsersDbContext>(options =>
 // B. Injeção de Dependências (Repositories)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAdminUserRepository, AdminUserRepository>();
+
+// B2. DynamoDB (log de eventos cross-service)
+builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
+{
+    var serviceUrl = builder.Configuration["AWS:DynamoDB:ServiceUrl"];
+    var config = new AmazonDynamoDBConfig();
+    if (!string.IsNullOrEmpty(serviceUrl))
+    {
+        config.ServiceURL = serviceUrl;
+    }
+    else
+    {
+        // O client exige Region ou ServiceURL só para ser construído (falha até em ambientes que
+        // nunca chegam a chamar a API, como testes de integração) - cai para us-east-1 quando
+        // nem AWS_REGION nem o endpoint local estão configurados.
+        config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(
+            Environment.GetEnvironmentVariable("AWS_REGION") ?? "us-east-1");
+    }
+    return new AmazonDynamoDBClient(config);
+});
+builder.Services.AddScoped<IEventLogRepository, DynamoDbEventLogRepository>();
 
 // C. Injeção de Dependências (Services)
 builder.Services.AddScoped<UserService>();
@@ -89,17 +112,37 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // E. MassTransit / RabbitMQ
+// Local (docker-compose): RabbitMq:UseSsl ausente -> broker self-hosted em texto plano, sem mudança.
+// Produção: RabbitMq:UseSsl=true aponta para o endpoint AMQPS do Amazon MQ (porta 5671, TLS).
 if (!builder.Services.Any(s => s.ServiceType == typeof(MassTransit.IBus)))
 {
+    var rabbitHost = builder.Configuration["RabbitMq:Host"] ?? "localhost";
+    var rabbitUseSsl = builder.Configuration.GetValue<bool>("RabbitMq:UseSsl");
+    var rabbitPort = builder.Configuration.GetValue<int?>("RabbitMq:Port") ?? (rabbitUseSsl ? 5671 : 5672);
+    var rabbitVirtualHost = builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
+    var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "admin";
+    var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "admin";
+
     builder.Services.AddMassTransit(x =>
     {
         x.UsingRabbitMq((context, cfg) =>
         {
-            cfg.Host(builder.Configuration["RabbitMq:Host"] ?? "localhost", "/", h =>
+            if (rabbitUseSsl)
             {
-                h.Username("admin");
-                h.Password("admin");
-            });
+                cfg.Host(new Uri($"rabbitmqs://{rabbitHost}:{rabbitPort}{rabbitVirtualHost}"), h =>
+                {
+                    h.Username(rabbitUsername);
+                    h.Password(rabbitPassword);
+                });
+            }
+            else
+            {
+                cfg.Host(rabbitHost, rabbitVirtualHost, h =>
+                {
+                    h.Username(rabbitUsername);
+                    h.Password(rabbitPassword);
+                });
+            }
         });
     });
 }
@@ -116,6 +159,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseHttpMetrics();
+
 // ============================================================
 // 2. MIDDLEWARES DE SEGURANÇA
 // ============================================================
@@ -123,12 +168,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapMetrics();
 app.MapGet("/health", () => Results.Ok());
 
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<UsersDbContext>();
     context.Database.EnsureCreated();
+}
+
+// Só cria a tabela automaticamente contra um endpoint local (dynamodb-local) - nem em produção
+// (isso é responsabilidade do IaC) nem contra a AWS real por engano em testes/dev sem Docker.
+if (!string.IsNullOrEmpty(builder.Configuration["AWS:DynamoDB:ServiceUrl"]))
+{
+    await Fgc.Users.Infrastructure.Persistence.DynamoDbEventLogTableInitializer.EnsureTableExistsAsync(
+        app.Services.GetRequiredService<IAmazonDynamoDB>());
 }
 
 app.Run();

@@ -1,4 +1,5 @@
-﻿using Fgc.Users.Application.Services;
+﻿using Fgc.Users.Application.Interfaces;
+using Fgc.Users.Application.Services;
 using Fgc.Users.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -33,6 +34,15 @@ public class CustomWebApplicationFactory<TStartup> : WebApplicationFactory<TStar
                     .UseInMemoryDatabase("InMemoryUsersTestDb")
                     .Options;
             });
+
+            // Sem broker/DynamoDB real disponível em teste de integração.
+            services.RemoveAll(typeof(IEventLogRepository));
+            services.AddScoped<IEventLogRepository, NoOpEventLogRepository>();
         });
     }
+}
+
+internal class NoOpEventLogRepository : IEventLogRepository
+{
+    public Task LogAsync(string eventType, object payload, CancellationToken cancellationToken) => Task.CompletedTask;
 }

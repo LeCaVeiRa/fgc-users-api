@@ -15,6 +15,7 @@ namespace Fgc.Users.Tests.Services
         private readonly Mock<IUserRepository> _userRepositoryMock;
         private readonly Mock<ILogger<UserService>> _loggerMock;
         private readonly Mock<IPublishEndpoint> _publishEndpointMock;
+        private readonly Mock<IEventLogRepository> _eventLogRepositoryMock;
         private readonly UserService _userService;
 
         public UserServiceTests()
@@ -22,7 +23,8 @@ namespace Fgc.Users.Tests.Services
             _userRepositoryMock = new Mock<IUserRepository>();
             _loggerMock = new Mock<ILogger<UserService>>();
             _publishEndpointMock = new Mock<IPublishEndpoint>();
-            _userService = new UserService(_userRepositoryMock.Object, _loggerMock.Object, _publishEndpointMock.Object);
+            _eventLogRepositoryMock = new Mock<IEventLogRepository>();
+            _userService = new UserService(_userRepositoryMock.Object, _loggerMock.Object, _publishEndpointMock.Object, _eventLogRepositoryMock.Object);
         }
 
         #region RegisterAsync
