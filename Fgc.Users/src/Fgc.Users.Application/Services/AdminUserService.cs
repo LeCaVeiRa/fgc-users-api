@@ -1,17 +1,25 @@
 ﻿using Fgc.MessageContracts.Events;
+using Fgc.Users.Application.DTOS.Users;
 using Fgc.Users.Application.Helpers;
 using Fgc.Users.Application.Interfaces;
 using Fgc.Users.Domain.Entities;
 using Fgc.Users.Domain.Exceptions;
 using Fgc.Users.Domain.ValueObjects;
 using MassTransit;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace Fgc.Users.Application.Services
 {
-    public class AdminUserService(IAdminUserRepository adminUserRepository, ILogger<AdminUserService> logger, IPublishEndpoint publishEndpoint)
+    public class AdminUserService(IAdminUserRepository adminUserRepository, ILogger<AdminUserService> logger, IPublishEndpoint publishEndpoint, IDistributedCache cache)
     {
-        
+        public const string AllUsersCacheKey = "users:all";
+        private static readonly DistributedCacheEntryOptions CacheOptions = new()
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60)
+        };
+
         public async Task<User> RegisterAsync(
             string name,
             string email,
@@ -30,6 +38,8 @@ namespace Fgc.Users.Application.Services
 
             await adminUserRepository.AddAsync(user);
 
+            await cache.RemoveAsync(AllUsersCacheKey);
+
             var userCreatedEvent = new UserCreatedEvent(user.Id, user.Name, user.Email.Value, DateTime.UtcNow);
             await publishEndpoint.Publish(userCreatedEvent);
 
@@ -38,11 +48,22 @@ namespace Fgc.Users.Application.Services
             return user;
         }
 
-        public async Task<IEnumerable<User>> GetAllAsync()
+        public async Task<List<UserResponse>> GetAllAsync()
         {
             logger.LogInformation("Admin requested user list");
 
-            return await adminUserRepository.GetAllAsync();
+            var cached = await cache.GetStringAsync(AllUsersCacheKey);
+            if (cached is not null)
+            {
+                return JsonSerializer.Deserialize<List<UserResponse>>(cached) ?? [];
+            }
+
+            var users = await adminUserRepository.GetAllAsync();
+            var response = users.Select(UserResponse.FromEntity).ToList();
+
+            await cache.SetStringAsync(AllUsersCacheKey, JsonSerializer.Serialize(response), CacheOptions);
+
+            return response;
         }
         public async Task<User?> GetByIdAsync(Guid id)
         {
@@ -71,6 +92,8 @@ namespace Fgc.Users.Application.Services
 
             await adminUserRepository.UpdateAsync(user);
 
+            await cache.RemoveAsync(AllUsersCacheKey);
+
             logger.LogInformation(
                 "Admin updated user role | UserId={UserId} | NewRole={Role}",
                 user.Id,
@@ -92,6 +115,8 @@ namespace Fgc.Users.Application.Services
             }
 
             await adminUserRepository.DeleteAsync(user);
+
+            await cache.RemoveAsync(AllUsersCacheKey);
 
             logger.LogInformation("Admin deleted user | UserId={UserId} | Email={Email}",user.Id,user.Email.Value);
         }

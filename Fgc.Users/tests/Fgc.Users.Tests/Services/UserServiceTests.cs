@@ -5,6 +5,7 @@ using Fgc.Users.Domain.Entities;
 using Fgc.Users.Domain.Exceptions;
 using Fgc.Users.Domain.ValueObjects;
 using MassTransit;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -16,6 +17,7 @@ namespace Fgc.Users.Tests.Services
         private readonly Mock<ILogger<UserService>> _loggerMock;
         private readonly Mock<IPublishEndpoint> _publishEndpointMock;
         private readonly Mock<IEventLogRepository> _eventLogRepositoryMock;
+        private readonly Mock<IDistributedCache> _cacheMock;
         private readonly UserService _userService;
 
         public UserServiceTests()
@@ -24,7 +26,8 @@ namespace Fgc.Users.Tests.Services
             _loggerMock = new Mock<ILogger<UserService>>();
             _publishEndpointMock = new Mock<IPublishEndpoint>();
             _eventLogRepositoryMock = new Mock<IEventLogRepository>();
-            _userService = new UserService(_userRepositoryMock.Object, _loggerMock.Object, _publishEndpointMock.Object, _eventLogRepositoryMock.Object);
+            _cacheMock = new Mock<IDistributedCache>();
+            _userService = new UserService(_userRepositoryMock.Object, _loggerMock.Object, _publishEndpointMock.Object, _eventLogRepositoryMock.Object, _cacheMock.Object);
         }
 
         #region RegisterAsync

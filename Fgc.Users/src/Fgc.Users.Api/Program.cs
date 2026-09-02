@@ -53,6 +53,13 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
 });
 builder.Services.AddScoped<IEventLogRepository, DynamoDbEventLogRepository>();
 
+// B3. Redis (cache de GET /admin/users)
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration["Redis:ConnectionString"];
+    options.InstanceName = "FgcUsers:";
+});
+
 // C. Injeção de Dependências (Services)
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<AdminUserService>();

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -38,6 +39,10 @@ public class CustomWebApplicationFactory<TStartup> : WebApplicationFactory<TStar
             // Sem broker/DynamoDB real disponível em teste de integração.
             services.RemoveAll(typeof(IEventLogRepository));
             services.AddScoped<IEventLogRepository, NoOpEventLogRepository>();
+
+            // Sem Redis real disponível em teste de integração - cache em memória equivalente.
+            services.RemoveAll(typeof(IDistributedCache));
+            services.AddDistributedMemoryCache();
         });
     }
 }

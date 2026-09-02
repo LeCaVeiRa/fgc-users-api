@@ -28,15 +28,7 @@ namespace Fgc.Users.Api.Controllers
         {
             var users = await _userService.GetAllAsync();
 
-            var response = users.Select(u => new
-            {
-                u.Id,
-                u.Name,
-                Email = u.Email.Value,
-                u.Role
-            });
-
-            return Ok(response);
+            return Ok(users);
         }
 
         [HttpGet("{id:guid}")]

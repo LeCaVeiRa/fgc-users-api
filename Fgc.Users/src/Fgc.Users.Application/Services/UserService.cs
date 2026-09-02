@@ -4,12 +4,13 @@ using Fgc.Users.Domain.Entities;
 using Fgc.Users.Domain.Exceptions;
 using Fgc.Users.Domain.ValueObjects;
 using MassTransit;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Fgc.MessageContracts.Events;
 
 namespace Fgc.Users.Application.Services
 {
-    public class UserService(IUserRepository userRepository, ILogger<UserService> logger, IPublishEndpoint publishEndpoint, IEventLogRepository eventLogRepository)
+    public class UserService(IUserRepository userRepository, ILogger<UserService> logger, IPublishEndpoint publishEndpoint, IEventLogRepository eventLogRepository, IDistributedCache cache)
     {
 
         public async Task<User> RegisterAsync(string name,string email,string password)
@@ -45,6 +46,8 @@ namespace Fgc.Users.Application.Services
 
             await eventLogRepository.LogAsync("UserCreatedEvent", userCreatedEvent, CancellationToken.None);
 
+            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
+
             logger.LogInformation(
                 "User registered successfully | UserId={UserId} | Email={Email}",
                 user.Id,
@@ -74,6 +77,8 @@ namespace Fgc.Users.Application.Services
             user.UpdatePassword(PasswordHasher.Hash(password));
 
             await userRepository.UpdateAsync(user);
+
+            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
 
             return user;
         }
