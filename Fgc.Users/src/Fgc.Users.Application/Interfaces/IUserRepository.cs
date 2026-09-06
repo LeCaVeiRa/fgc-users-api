@@ -14,6 +14,7 @@ namespace Fgc.Users.Application.Interfaces
         Task AddAsync(User user);
         Task UpdateAsync(User user);
         Task<bool> ExistsByEmailAsync(string email); // Criei para excluir a parte do banco que estava no monolito.
+        Task<bool> AnyAdminExistsAsync();
 
     }
 }

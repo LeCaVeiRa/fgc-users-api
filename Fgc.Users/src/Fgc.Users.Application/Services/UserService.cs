@@ -57,6 +57,55 @@ namespace Fgc.Users.Application.Services
             return user;
         }
 
+        public async Task<User> CreateFirstAdminAsync(string name, string email, string password)
+        {
+            if (await userRepository.AnyAdminExistsAsync())
+            {
+                throw new ConflictException("An admin user already exists.");
+            }
+
+            var emailExists = await userRepository.ExistsByEmailAsync(email);
+
+            if (emailExists)
+            {
+                throw new ConflictException("Email already registered.");
+            }
+
+            PasswordValidator.Validate(password);
+
+            var passwordHash = PasswordHasher.Hash(password);
+            var emailVo = Email.Create(email);
+
+            var user = User.Create(
+                name,
+                emailVo,
+                passwordHash,
+                "Admin"
+            );
+            await userRepository.AddAsync(user);
+
+            var userCreatedEvent = new UserCreatedEvent(
+                    user.Id,
+                    user.Name,
+                    user.Email.Value,
+                    DateTime.UtcNow
+                );
+
+            await publishEndpoint.Publish(userCreatedEvent);
+
+            await eventLogRepository.LogAsync("UserCreatedEvent", userCreatedEvent, CancellationToken.None);
+
+            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
+
+            logger.LogInformation(
+                "First admin user created successfully | UserId={UserId} | Email={Email}",
+                user.Id,
+                user.Email.Value
+            );
+
+            return user;
+        }
+
         public async Task<User> UpdateUserAsync(
             Guid userId,
             string email,

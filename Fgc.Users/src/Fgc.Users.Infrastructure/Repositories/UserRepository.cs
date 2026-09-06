@@ -25,6 +25,11 @@ namespace Fgc.Users.Infrastructure.Repositories
             return await _context.Users.AnyAsync(u => u.Email.Value == email);
         }
 
+        public async Task<bool> AnyAdminExistsAsync()
+        {
+            return await _context.Users.AnyAsync(u => u.Role == "Admin");
+        }
+
         public async Task<User?> GetByEmailAsync(string email)
         {
             return await _context.Users

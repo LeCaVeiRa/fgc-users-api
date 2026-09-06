@@ -1,20 +1,23 @@
-﻿using Fgc.Users.Application.Helpers;
-using Fgc.Users.Domain.ValueObjects;
-using Fgc.Users.Infrastructure.Persistence;
+using Fgc.Users.API.Security;
+using Fgc.Users.Application.Services;
+using Fgc.Users.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fgc.Users.API.Controllers
 {
     [ApiController]
     [Route("setup")]
+    [Tags("Setup")]
     public class SetupController : ControllerBase
     {
-        private readonly UsersDbContext _context;
+        private readonly UserService _userService;
+        private readonly JwtTokenGenerator _jwtTokenGenerator;
         private readonly IWebHostEnvironment _env;
 
-        public SetupController(UsersDbContext context, IWebHostEnvironment env)
+        public SetupController(UserService userService, JwtTokenGenerator jwtTokenGenerator, IWebHostEnvironment env)
         {
-            _context = context;
+            _userService = userService;
+            _jwtTokenGenerator = jwtTokenGenerator;
             _env = env;
         }
 
@@ -22,25 +25,36 @@ namespace Fgc.Users.API.Controllers
         /// Cria o primeiro usuário admin para facilitar os testes iniciais. Apenas para ambiente de desenvolvimento.
         /// </summary>
         [HttpPost("first-admin")]
-        public IActionResult CreateFirstAdmin([FromBody] SetupAdminRequest request)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<IActionResult> CreateFirstAdmin([FromBody] SetupAdminRequest request)
         {
             if (!_env.IsDevelopment())
                 return NotFound(); // Em produção, ninguém descobre que existe.
 
-            if (_context.Users.Any(u => u.Role == "Admin"))
-                return BadRequest(new{error = "An admin user already exists."});
+            try
+            {
+                var user = await _userService.CreateFirstAdminAsync(request.Name, request.Email, request.Password);
+                var token = _jwtTokenGenerator.GenerateToken(user);
 
-            var user = Domain.Entities.User.Create(
-                request.Name,
-                Email.Create(request.Email),
-                PasswordHasher.Hash(request.Password),
-                "Admin"
-                );
-
-            _context.Users.Add(user);
-            _context.SaveChanges();
-
-            return Ok(new { message = "Admin user created successfully." });
+                return Ok(new
+                {
+                    user.Id,
+                    user.Name,
+                    Email = user.Email.Value,
+                    Token = token
+                });
+            }
+            catch (ConflictException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 
