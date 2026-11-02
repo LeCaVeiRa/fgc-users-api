@@ -14,6 +14,13 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Segredos (chave JWT, credenciais do broker) não têm default: vêm de env/.env (compose) ou Secret (K8s).
+// Ausência derruba a subida com mensagem clara em vez de cair num valor inseguro.
+string RequiredSetting(string key) =>
+    builder.Configuration[key] is { Length: > 0 } value
+        ? value
+        : throw new InvalidOperationException($"Missing configuration '{key}' (env {key.Replace(":", "__")}).");
+
 // Add services to the container.
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -85,7 +92,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)
+                Encoding.UTF8.GetBytes(RequiredSetting("Jwt:Key"))
             )
         };
     });
@@ -131,8 +138,8 @@ if (!builder.Services.Any(s => s.ServiceType == typeof(MassTransit.IBus)))
     var rabbitUseSsl = builder.Configuration.GetValue<bool>("RabbitMq:UseSsl");
     var rabbitPort = builder.Configuration.GetValue<int?>("RabbitMq:Port") ?? (rabbitUseSsl ? 5671 : 5672);
     var rabbitVirtualHost = builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
-    var rabbitUsername = builder.Configuration["RabbitMq:Username"] ?? "admin";
-    var rabbitPassword = builder.Configuration["RabbitMq:Password"] ?? "admin";
+    var rabbitUsername = RequiredSetting("RabbitMq:Username");
+    var rabbitPassword = RequiredSetting("RabbitMq:Password");
 
     builder.Services.AddMassTransit(x =>
     {
