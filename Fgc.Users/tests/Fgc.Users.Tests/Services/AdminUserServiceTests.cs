@@ -60,6 +60,23 @@ namespace Fgc.Users.Tests.Services
             _adminUserRepositoryMock.Verify(r => r.GetAllAsync(), Times.Once);
         }
 
+        [Fact]
+        public async Task GetAllAsync_ShouldFallBackToRepository_WhenCacheIsUnavailable()
+        {
+            var failingCache = new Mock<IDistributedCache>();
+            failingCache.Setup(c => c.GetAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("redis down"));
+            failingCache.Setup(c => c.SetAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<DistributedCacheEntryOptions>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("redis down"));
+            var service = new AdminUserService(_adminUserRepositoryMock.Object, _loggerMock.Object, _publishEndpointMock.Object, failingCache.Object);
+            _adminUserRepositoryMock.Setup(r => r.GetAllAsync()).ReturnsAsync([CreateUser()]);
+
+            var result = await service.GetAllAsync();
+
+            Assert.Single(result);
+            _adminUserRepositoryMock.Verify(r => r.GetAllAsync(), Times.Once);
+        }
+
         #endregion
 
         #region RegisterAsync

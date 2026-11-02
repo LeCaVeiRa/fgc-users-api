@@ -1,6 +1,7 @@
 ﻿using Fgc.Users.Application.Interfaces;
 using Fgc.Users.Application.Services;
 using Fgc.Users.Infrastructure.Persistence;
+using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -43,6 +44,10 @@ public class CustomWebApplicationFactory<TStartup> : WebApplicationFactory<TStar
             // Sem Redis real disponível em teste de integração - cache em memória equivalente.
             services.RemoveAll(typeof(IDistributedCache));
             services.AddDistributedMemoryCache();
+
+            // Sem RabbitMQ real disponível em teste de integração - substitui o bus do Program
+            // por um transporte em memória (publicações ficam inspecionáveis via ITestHarness).
+            services.AddMassTransitTestHarness();
         });
     }
 }

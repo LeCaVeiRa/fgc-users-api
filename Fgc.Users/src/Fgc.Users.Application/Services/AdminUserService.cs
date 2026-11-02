@@ -38,7 +38,7 @@ namespace Fgc.Users.Application.Services
 
             await adminUserRepository.AddAsync(user);
 
-            await cache.RemoveAsync(AllUsersCacheKey);
+            await cache.TryRemoveAsync(AllUsersCacheKey, logger);
 
             var userCreatedEvent = new UserCreatedEvent(user.Id, user.Name, user.Email.Value, DateTime.UtcNow);
             await publishEndpoint.Publish(userCreatedEvent);
@@ -52,7 +52,7 @@ namespace Fgc.Users.Application.Services
         {
             logger.LogInformation("Admin requested user list");
 
-            var cached = await cache.GetStringAsync(AllUsersCacheKey);
+            var cached = await cache.TryGetStringAsync(AllUsersCacheKey, logger);
             if (cached is not null)
             {
                 return JsonSerializer.Deserialize<List<UserResponse>>(cached) ?? [];
@@ -61,7 +61,7 @@ namespace Fgc.Users.Application.Services
             var users = await adminUserRepository.GetAllAsync();
             var response = users.Select(UserResponse.FromEntity).ToList();
 
-            await cache.SetStringAsync(AllUsersCacheKey, JsonSerializer.Serialize(response), CacheOptions);
+            await cache.TrySetStringAsync(AllUsersCacheKey, JsonSerializer.Serialize(response), CacheOptions, logger);
 
             return response;
         }
@@ -92,7 +92,7 @@ namespace Fgc.Users.Application.Services
 
             await adminUserRepository.UpdateAsync(user);
 
-            await cache.RemoveAsync(AllUsersCacheKey);
+            await cache.TryRemoveAsync(AllUsersCacheKey, logger);
 
             logger.LogInformation(
                 "Admin updated user role | UserId={UserId} | NewRole={Role}",
@@ -116,7 +116,7 @@ namespace Fgc.Users.Application.Services
 
             await adminUserRepository.DeleteAsync(user);
 
-            await cache.RemoveAsync(AllUsersCacheKey);
+            await cache.TryRemoveAsync(AllUsersCacheKey, logger);
 
             logger.LogInformation("Admin deleted user | UserId={UserId} | Email={Email}",user.Id,user.Email.Value);
         }

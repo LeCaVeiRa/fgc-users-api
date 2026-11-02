@@ -46,7 +46,7 @@ namespace Fgc.Users.Application.Services
 
             await eventLogRepository.LogAsync("UserCreatedEvent", userCreatedEvent, CancellationToken.None);
 
-            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
+            await cache.TryRemoveAsync(AdminUserService.AllUsersCacheKey, logger);
 
             logger.LogInformation(
                 "User registered successfully | UserId={UserId} | Email={Email}",
@@ -95,7 +95,7 @@ namespace Fgc.Users.Application.Services
 
             await eventLogRepository.LogAsync("UserCreatedEvent", userCreatedEvent, CancellationToken.None);
 
-            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
+            await cache.TryRemoveAsync(AdminUserService.AllUsersCacheKey, logger);
 
             logger.LogInformation(
                 "First admin user created successfully | UserId={UserId} | Email={Email}",
@@ -127,7 +127,7 @@ namespace Fgc.Users.Application.Services
 
             await userRepository.UpdateAsync(user);
 
-            await cache.RemoveAsync(AdminUserService.AllUsersCacheKey);
+            await cache.TryRemoveAsync(AdminUserService.AllUsersCacheKey, logger);
 
             return user;
         }

@@ -1,4 +1,5 @@
 using Amazon.DynamoDBv2;
+using Fgc.Users.Api.HealthChecks;
 using Fgc.Users.Application.Interfaces;
 using Fgc.Users.Application.Services;
 using Fgc.Users.Infrastructure.Persistence;
@@ -59,6 +60,9 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration["Redis:ConnectionString"];
     options.InstanceName = "FgcUsers:";
 });
+
+// B4. Health checks (liveness/readiness)
+builder.Services.AddFgcHealthChecks("FgcEventLog");
 
 // C. Injeção de Dependências (Services)
 builder.Services.AddScoped<UserService>();
@@ -176,7 +180,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapMetrics();
-app.MapGet("/health", () => Results.Ok());
+app.MapFgcHealthChecks();
 
 using (var scope = app.Services.CreateScope())
 {
