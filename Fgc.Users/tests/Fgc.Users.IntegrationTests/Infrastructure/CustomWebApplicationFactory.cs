@@ -21,6 +21,7 @@ public class CustomWebApplicationFactory<TStartup> : WebApplicationFactory<TStar
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("RabbitMq:Username", "test");
         builder.UseSetting("RabbitMq:Password", "test");
+        builder.UseSetting("Redis:ConnectionString", "unused-replaced-by-memory-cache");
 
         builder.ConfigureLogging(logging =>
         {

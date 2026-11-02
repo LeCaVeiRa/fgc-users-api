@@ -4,6 +4,7 @@ using Fgc.Users.Application.Interfaces;
 using Fgc.Users.Application.Services;
 using Fgc.Users.Infrastructure.Persistence;
 using Fgc.Users.Infrastructure.Repositories;
+using Fgc.Users.Infrastructure.Seed;
 using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -62,9 +63,10 @@ builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
 builder.Services.AddScoped<IEventLogRepository, DynamoDbEventLogRepository>();
 
 // B3. Redis (cache de GET /admin/users)
+var redisConnectionString = RequiredSetting("Redis:ConnectionString");
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = builder.Configuration["Redis:ConnectionString"];
+    options.Configuration = redisConnectionString;
     options.InstanceName = "FgcUsers:";
 });
 
@@ -80,6 +82,8 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<Fgc.Users.API.Security.JwtTokenGenerator>();
 
 // D. Adicionando o middleware de autenticação JWT
+// Lida aqui (e não dentro do callback) para falhar na subida, não na primeira requisição autenticada.
+var jwtKey = RequiredSetting("Jwt:Key");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -92,7 +96,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(RequiredSetting("Jwt:Key"))
+                Encoding.UTF8.GetBytes(jwtKey)
             )
         };
     });
@@ -168,6 +172,18 @@ if (!builder.Services.Any(s => s.ServiceType == typeof(MassTransit.IBus)))
 
 var app = builder.Build();
 
+// Modo Job (EKS, antes do rollout): aplica migrations, cria o primeiro Admin (Seed:Admin*) e encerra
+// sem subir o servidor HTTP - evita corrida de migrations entre réplicas.
+if (args.Contains("--migrate"))
+{
+    using var migrateScope = app.Services.CreateScope();
+    var migrateContext = migrateScope.ServiceProvider.GetRequiredService<UsersDbContext>();
+    await migrateContext.Database.MigrateAsync();
+    await AdminUserSeed.SeedAsync(migrateContext, app.Configuration, app.Logger);
+    app.Logger.LogInformation("Migrations applied; exiting (--migrate)");
+    return;
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -175,7 +191,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// TLS termina no ALB/Kong; o container só escuta HTTP:8080. Redirect só quando explicitamente pedido.
+if (app.Configuration.GetValue<bool>("Https:Redirect"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseHttpMetrics();
 
