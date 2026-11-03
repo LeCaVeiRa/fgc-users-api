@@ -111,7 +111,7 @@ namespace Fgc.Users.Application.Services
             string email,
             string password)
         {
-            var user = await userRepository.GetByIdAsync(userId);
+         //   var user = await userRepository.GetByIdAsync(userId);
 
             if (user is null)
             {
