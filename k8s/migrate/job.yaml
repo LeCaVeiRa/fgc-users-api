@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fgc-users-api-migrate
+  labels:
+    app: fgc-users-api
+    component: migrate
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: fgc-users-api
+        component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: fgc-users-api
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: migrate
+          image: fgc-users-api
+          # Também cria o primeiro Admin (Seed__AdminEmail/Seed__AdminPassword do Secret).
+          args: ["--migrate"]
+          envFrom:
+            - configMapRef:
+                name: fgc-users-api-config
+            - secretRef:
+                name: fgc-users-api-secret
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
