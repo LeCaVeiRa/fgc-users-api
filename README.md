@@ -12,7 +12,7 @@ Arquitetura de microsserviços orientada a eventos, garantindo:
 
 - Autonomia de código e ciclo de vida (repositório isolado)
 - Comunicação assíncrona utilizando Mensageria (**RabbitMQ** / **Amazon MQ** em produção)
-- Persistência de dados isolada (SQLite para usuários, DynamoDB para log de eventos)
+- Persistência de dados isolada (PostgreSQL para usuários, DynamoDB para log de eventos)
 - Cache com **Redis**
 - Containerização com **Docker**
 - Base escalável para orquestração em Kubernetes
@@ -22,7 +22,7 @@ Arquitetura de microsserviços orientada a eventos, garantindo:
 ## 🛠️ Tecnologias Utilizadas
 
 - **.NET 8** / **ASP.NET Core Web API**
-- **Entity Framework Core** + **SQLite**
+- **Entity Framework Core** + **PostgreSQL** (Npgsql; RDS na AWS)
 - **MassTransit** + **RabbitMQ** (Amazon MQ/AMQPS em produção)
 - **Redis** (`IDistributedCache`, cache de consultas)
 - **AWS DynamoDB** (log de eventos de domínio)
@@ -118,7 +118,7 @@ Authorization: Bearer {token}
 * `DELETE /admin/users/{id}` — remove usuário.
 
 ### `SetupController` (`/setup`)
-* `POST /setup/first-admin` — bootstrap do primeiro usuário Admin do ambiente.
+* `POST /setup/first-admin` — bootstrap do primeiro usuário Admin, **só em Development**. Na AWS o primeiro Admin é criado pelo Job `--migrate` a partir de `Seed__AdminEmail`/`Seed__AdminPassword` (Secrets Manager).
 
 ---
 
@@ -140,9 +140,14 @@ Testes: `Fgc.Users.Tests` (unitários) e `Fgc.Users.IntegrationTests` (`WebAppli
 
 ## 🗄️ Banco de Dados
 
-* **SQLite** via EF Core para a entidade `User` (migrations em `Fgc.Users.Infrastructure/Migrations`).
-* **AWS DynamoDB** para o log de eventos de domínio (independente do SQLite).
-* **Redis** como cache de leitura (`IDistributedCache`) em consultas de usuário.
+* **PostgreSQL** via EF Core para a entidade `User`, com migrations em `Fgc.Users.Infrastructure/Migrations`.
+  * No compose, a API aplica as migrations na subida (`Database__MigrateOnStartup`, padrão `true`).
+  * No EKS, quem aplica é o Job `dotnet Fgc.Users.Api.dll --migrate`, que também cria o primeiro Admin e encerra.
+* **AWS DynamoDB** para o log de eventos de domínio (`FgcEventLog`).
+* **Redis** como cache de `GET /admin/users`. Com o Redis fora do ar, as consultas vão direto ao banco: um disjuntor ignora o cache por 30s depois de uma falha, sem adicionar latência a cada requisição.
+* Health checks:
+  * `/health/live`: o processo está vivo.
+  * `/health/ready`: banco e broker. Falha de Redis ou DynamoDB só deixa o serviço *Degraded*.
 
 ---
 
@@ -163,35 +168,50 @@ Referenciado via NuGet local (`nuget.config` aponta para `./LocalPackages`):
 
 ### Pré-requisitos
 
-* .NET SDK 8+
-* Docker e Docker Compose (para RabbitMQ)
+* .NET SDK 8 (e SDK 10 para abrir o `.slnx` pela CLI)
+* Docker e Docker Compose
 
-### Variáveis de Ambiente (`appsettings.json`)
+### Variáveis de Ambiente
 
-* `ConnectionStrings:UserDb` (ex.: `Data Source=users.db`)
-* `Jwt:Key`, `Jwt:Issuer`, `Jwt:Audience`
-* `RabbitMq:Host`, `RabbitMq:Port`, `RabbitMq:VirtualHost`, `RabbitMq:Username`, `RabbitMq:Password`, `RabbitMq:UseSsl` (`true` habilita AMQPS/porta 5671, usado com Amazon MQ em produção)
+Sem valor padrão para segredos: se uma variável obrigatória faltar, a API não sobe e informa qual variável está faltando.
+Localmente os valores vêm do `.env` de `fgc-orchestration` (via docker-compose). No EKS vêm do Secrets Manager, via External Secrets.
+A tabela completa (local × AWS) está em `fgc-orchestration/README.md`.
+
+* `ConnectionStrings__UserDb`: `Host=...;Port=5432;Database=fgc_users;Username=...;Password=...`
+* `Jwt__Key` (obrigatória), `Jwt__Issuer`, `Jwt__Audience`
+* `RabbitMq__Host`, `RabbitMq__Username`, `RabbitMq__Password` (obrigatórias), `RabbitMq__Port`, `RabbitMq__VirtualHost`, `RabbitMq__UseSsl` (`true` habilita AMQPS/5671, Amazon MQ)
+* `Redis__ConnectionString` (obrigatória)
+* `AWS__DynamoDB__ServiceUrl` (só local) e `AWS_REGION`
+* `Seed__AdminEmail` / `Seed__AdminPassword` (só no modo `--migrate`)
 
 ### Execução via Docker
 
-A partir de `Fgc.Users/` (o `docker-compose.yml` não está na raiz do repositório):
+Suba a stack completa a partir de `fgc-orchestration/` (copie `.env.example` para `.env` antes):
 
 ```bash
-cd Fgc.Users
-docker-compose up -d
+cd ../fgc-orchestration
+docker-compose up -d --build
 ```
-
-Para subir o serviço junto com os demais (Catalog, Payments, RabbitMQ, DynamoDB local, Redis, Kong, etc.), use o `docker-compose.yml` central em `fgc-orchestration/`.
 
 ### Execução Local
 
+Com Postgres, RabbitMQ e Redis do compose rodando e as variáveis acima definidas:
+
 ```bash
-dotnet restore
-dotnet ef database update --project src/Fgc.Users.Infrastructure --startup-project src/Fgc.Users.Api
-dotnet run --project src/Fgc.Users.Api
+dotnet run --project Fgc.Users/src/Fgc.Users.Api
 ```
 
-Acesse: `http://localhost:5038/swagger` (porta local; em Docker via `fgc-orchestration` também é publicada em 5038).
+Acesse: `http://localhost:5038/swagger`.
+
+---
+
+## 🚀 CI/CD
+
+`.github/workflows/ci-cd.yml`:
+- **Pull request:** build e testes.
+- **Push em `main`:** testes, imagem com tag = SHA, Trivy (CRITICAL), push no ECR, Job de migração e rolling update no EKS.
+
+Detalhes, credenciais e o ciclo da infra estão em `fgc-orchestration/README.md`.
 
 ---
 
